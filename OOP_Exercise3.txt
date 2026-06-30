@@ -1,0 +1,25 @@
+Object Oriented Programming, Exercise 3
+=======================================
+6-30-26, P. Mathys
+
+Exercise 3: Communication Chain
+
+Build: src = Source()
+       enc = Encoder()
+        ch = Channel()
+       dec = Decoder()
+        rx = Receiver()
+
+Source: object is ASCII source text
+        method: bits = src.generate()
+Encoder: object is source bits
+         method: coded = enc.encode(bits)
+Channel: object is encoded bits
+         method: noisy = ch.transmit(coded)
+Decoder: object is noisy encoded bits
+         method: decoded = dec.decode(noisy)
+Receiver: Object is decoded bits
+          method: msg = rx.evaluate(decoded)
+
+
+
