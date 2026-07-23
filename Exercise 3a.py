@@ -1,6 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -113,7 +114,6 @@ print(bits)
 # Internal state:
 #
 # ```python
-# bits
 # decoded
 # LSBfirst
 # ```
@@ -129,14 +129,13 @@ print(bits)
 # %%
 class Receiver:
 
-    def __init__(self, bits, decoded, LSBfirst=1):
-        self.bits = bits
+    def __init__(self, decoded, LSBfirst=1):
         self.decoded = decoded
         self.LSBfirst = LSBfirst
         
-    def BER(self):    # bit error rate (fraction of incorrectly decoded bits)
-        L = min(len(self.bits), len(self.decoded))
-        BER = np.where(self.bits!=self.decoded)[0].size/L
+    def BER(self, bits):    # bit error rate (fraction of incorrectly decoded bits)
+        L = min(len(bits), len(self.decoded))
+        BER = np.where(bits!=self.decoded)[0].size/L
         return BER
 
     def received_text(self):
@@ -157,10 +156,10 @@ class Receiver:
 # %%
 decoded = src.generate()
 decoded[3] = np.mod(1+decoded[3],2) 
-rx = Receiver(src.generate(), decoded, src.LSBfirst)
+rx = Receiver(decoded, src.LSBfirst)
 
 # %%
-print(rx.BER())
+print(rx.BER(src.generate()))
 print(rx.received_text())
 
 
@@ -184,6 +183,7 @@ print(rx.received_text())
 # ```python
 # transmit()
 # get_PbE()
+# set_PbE()
 # ```
 #
 
@@ -198,6 +198,11 @@ class Channel:
     def get_PbE(self):
         return self.PbE
 
+    def set_PbE(self, PbE):
+        if (PbE < 0) or (PbE > 1):
+            raise ValueError("PbE must be in range 0...1.0")
+        self.PbE = PbE
+    
     def transmit(self, binary_in):
         L = len(binary_in)
         ix = np.where(rng.random(L) <= self.PbE)
@@ -211,9 +216,79 @@ class Channel:
 src = Source("The quick brown fox jumps over the lazy dog 0123456789")
 ch = Channel(0.01)
 decoded = ch.transmit(src.generate())
-rx = Receiver(src.generate(), decoded, src.LSBfirst)
-print(f'BER: {rx.BER()}')
+rx = Receiver(decoded, src.LSBfirst)
+print(f'BER: {rx.BER(src.generate())}')
 print(rx.received_text())
 
+
+# %% [markdown]
+# ## Encoder Class
+#
+# Create:
+#
+# ```python
+# class Encoder:
+# ```
+#
+# Internal state:
+#
+# ```python
+# G    # Encoder matrix
+# ```
+#
+# Methods:
+#
+# ```python
+# encode()
+# ```
+#
+
+# %%
+class Encoder:
+
+    def __init__(self, G):
+        self.G = np.array(G, int)
+        self.k, self.n = np.shape(G)
+
+    def encode(self, src):
+        N = int(np.ceil(len(src)/self.k))
+        src_pad = np.zeros(N*self.k, int)
+        src_pad[:len(src)] = src
+        u = np.reshape(src_pad, (-1, self.k))   # split src string into blocks of length k
+        B = np.mod(u@self.G, 2)
+        return np.reshape(B, (1, -1))
+
+
+
+# %%
+src2 = Source('Hi!')
+G = [[1,0,0,0,1,1,1],[0,1,0,0,1,1,0],[0,0,1,0,1,0,1],[0,0,0,1,0,1,1]]
+enc = Encoder(G)
+coded = enc.encode(src2.generate())
+print(coded)
+
+
+# %% [markdown]
+# ## Decoder Class
+#
+# Create:
+#
+# ```python
+# class Decoder:
+# ```
+#
+# Internal state:
+#
+# ```python
+# H    # Parity check matrix
+# ```
+#
+# Methods:
+#
+# ```python
+# decode()
+# syndrome()
+# ```
+#
 
 # %%
