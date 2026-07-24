@@ -260,3 +260,5 @@ scope2.display()
 # 3. They are different objects, each with its own state
 
 # %%
+
+# %%

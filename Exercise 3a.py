@@ -1,7 +1,6 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -114,6 +113,7 @@ print(bits)
 # Internal state:
 #
 # ```python
+# noisy
 # decoded
 # LSBfirst
 # ```
@@ -121,7 +121,8 @@ print(bits)
 # Methods:
 #
 # ```python
-# BER()
+# BERchan()
+# BERinfo()
 # received_text()
 # ```
 #
@@ -129,15 +130,21 @@ print(bits)
 # %%
 class Receiver:
 
-    def __init__(self, decoded, LSBfirst=1):
+    def __init__(self, noisy, decoded, LSBfirst=1):
+        self.noisy = noisy
         self.decoded = decoded
         self.LSBfirst = LSBfirst
         
-    def BER(self, bits):    # bit error rate (fraction of incorrectly decoded bits)
+    def BERchan(self, bits):    # channel bit error rate (fraction of incorrectly decoded bits)
+        L = min(len(bits), len(self.noisy))
+        BER = np.where(bits!=self.noisy)[0].size/L
+        return BER
+
+    def BERinfo(self, bits):    # information bit error rate (fraction of incorrectly decoded bits)
         L = min(len(bits), len(self.decoded))
         BER = np.where(bits!=self.decoded)[0].size/L
         return BER
-
+        
     def received_text(self):
         bitsperchar = 8
         dnb = self.decoded[0:bitsperchar*int(len(self.decoded)/bitsperchar)]
@@ -156,10 +163,11 @@ class Receiver:
 # %%
 decoded = src.generate()
 decoded[3] = np.mod(1+decoded[3],2) 
-rx = Receiver(decoded, src.LSBfirst)
+rx = Receiver(decoded, decoded, src.LSBfirst)
 
 # %%
-print(rx.BER(src.generate()))
+print(rx.BERchan(src.generate()))
+print(rx.BERinfo(src.generate()))
 print(rx.received_text())
 
 
@@ -215,9 +223,9 @@ class Channel:
 # %%
 src = Source("The quick brown fox jumps over the lazy dog 0123456789")
 ch = Channel(0.01)
-decoded = ch.transmit(src.generate())
-rx = Receiver(decoded, src.LSBfirst)
-print(f'BER: {rx.BER(src.generate())}')
+noisy = ch.transmit(src.generate())
+rx = Receiver(noisy, noisy, src.LSBfirst)
+print(f'BER: {rx.BERchan(src.generate()):0.4f}')
 print(rx.received_text())
 
 
@@ -248,7 +256,7 @@ class Encoder:
 
     def __init__(self, G):
         self.G = np.array(G, int)
-        self.k, self.n = np.shape(G)
+        self.k, self.n = np.shape(self.G)
 
     def encode(self, src):
         N = int(np.ceil(len(src)/self.k))
@@ -256,7 +264,7 @@ class Encoder:
         src_pad[:len(src)] = src
         u = np.reshape(src_pad, (-1, self.k))   # split src string into blocks of length k
         B = np.mod(u@self.G, 2)
-        return np.reshape(B, (1, -1))
+        return np.reshape(B, (1, -1)).flatten()
 
 
 
@@ -290,5 +298,78 @@ print(coded)
 # syndrome()
 # ```
 #
+
+# %%
+class Decoder:
+
+    def __init__(self, H):
+        self.H = np.array(H, int)
+        self.nk, self.n = np.shape(self.H)
+        self.map = self.__syn2bit()
+        
+    def __syn2bit(self):
+        syn = self.H.T@np.array(2**np.arange(self.nk-1,-1,-1))  # syndrome in decimal
+        map = -np.ones(self.n+1, int)
+        for i in range(self.n):
+            map[syn[i]] = i
+        return map
+        
+    def syndrome(self, noisy):
+        N = int(np.ceil(len(noisy)/self.n))
+        noisy_pad = np.zeros(N*self.n, int)
+        noisy_pad[:len(noisy)] = np.array(noisy, int)
+        v = np.reshape(noisy_pad, (-1, self.n))   # split noisy string into blocks of length n
+        return np.mod(v@self.H.T, 2)
+        
+    def decode(self, noisy):
+        N = int(np.ceil(len(noisy)/self.n))
+        noisy_pad = np.zeros(N*self.n, int)
+        noisy_pad[:len(noisy)] = np.array(noisy, int)
+        S = self.syndrome(noisy_pad)
+        ss = S@np.array(2**np.arange(self.nk-1,-1,-1))
+        print(ss)
+        ixe = []
+        for i in range(len(ss)):
+            if ss[i]>0:
+                ixe.append(self.n*i + self.map[ss[i]])
+        print(ixe)
+        corrected = np.copy(noisy_pad)
+        corrected[ixe] = np.mod(corrected[ixe] + 1, 2)
+        D = np.reshape(corrected, (-1, self.n))
+        decoded = np.reshape(D[:,:self.n-self.nk], (1, -1)).flatten()
+        return decoded
+        
+
+
+# %%
+DD = np.array([[1,2,3],[4,5,6]])
+print(DD)
+print(DD[:,:2])
+
+# %%
+ch2 = Channel(0.05)
+noisy = ch2.transmit(coded)
+H = [[1,1,1,0,1,0,0],[1,1,0,1,0,1,0],[1,0,1,1,0,0,1]]
+#H = [[1,1,1,1,1,1,1,0,0,0,0,1,0,0,0],
+#     [1,1,1,1,0,0,0,1,1,1,0,0,1,0,0],
+#     [1,1,0,0,1,1,0,1,1,0,1,0,0,1,0],
+#     [1,0,1,0,1,0,1,1,0,1,1,0,0,0,1]]
+dec = Decoder(H)
+syn = dec.syndrome(noisy)
+print(syn)
+
+# %%
+decoded2 = dec.decode(noisy)
+rx2 = Receiver(noisy, decoded2, src2.LSBfirst)
+print(coded)
+print(noisy)
+print(src2.generate())
+print(decoded2)
+#print(dec.map)
+
+# %%
+print(f'BERchan: {rx2.BERchan(coded):0.4f}')
+print(f'BERinfo: {rx2.BERinfo(src2.generate()):0.4f}')
+print(rx2.received_text())
 
 # %%
