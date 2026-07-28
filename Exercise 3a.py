@@ -115,7 +115,6 @@ print(bits)
 # ```python
 # noisy
 # decoded
-# LSBfirst
 # ```
 #
 # Methods:
@@ -130,45 +129,45 @@ print(bits)
 # %%
 class Receiver:
 
-    def __init__(self, noisy, decoded, LSBfirst=1):
+    def __init__(self, noisy, decoded):
         self.noisy = noisy
         self.decoded = decoded
-        self.LSBfirst = LSBfirst
         
-    def BERchan(self, bits):    # channel bit error rate (fraction of incorrectly decoded bits)
+    def BERchan(self, bits):    # channel bit error rate (fraction of flipped noisy bits)
         L = min(len(bits), len(self.noisy))
-        BER = np.where(bits!=self.noisy)[0].size/L
+        BER = np.where(bits[:L]!=self.noisy[:L])[0].size/L
         return BER
 
     def BERinfo(self, bits):    # information bit error rate (fraction of incorrectly decoded bits)
         L = min(len(bits), len(self.decoded))
-        BER = np.where(bits!=self.decoded)[0].size/L
+        BER = np.where(bits[:L]!=self.decoded[:L])[0].size/L
         return BER
         
-    def received_text(self):
+    def received_text(self, LSBfirst=1):
         bitsperchar = 8
         dnb = self.decoded[0:bitsperchar*int(len(self.decoded)/bitsperchar)]
                          # make multiple of bitsperchar long
         B = np.array(np.reshape(dnb, (int(len(dnb)/bitsperchar), bitsperchar)), int)
-        if self.LSBfirst == 1:
+        if LSBfirst == 1:
             p2 = np.power(2, np.arange(0, bitsperchar))
         else:
             p2 = np.power(2, np.arange(bitsperchar, 0, -1) - 1)
         textnum = np.array(np.dot(B, p2))
-        textrx = ''.join(chr(n) for n in textnum)
-        return textrx
+        #rxtxt = ''.join(chr(n) for n in textnum)
+        rxtxt = ''.join(chr(n%128) for n in textnum)   # convert to 7-bit ASCII
+        return rxtxt
 
 
 
 # %%
 decoded = src.generate()
 decoded[3] = np.mod(1+decoded[3],2) 
-rx = Receiver(decoded, decoded, src.LSBfirst)
+rx = Receiver(decoded, decoded)
 
 # %%
 print(rx.BERchan(src.generate()))
 print(rx.BERinfo(src.generate()))
-print(rx.received_text())
+print(rx.received_text(src.LSBfirst))
 
 
 # %% [markdown]
@@ -224,9 +223,9 @@ class Channel:
 src = Source("The quick brown fox jumps over the lazy dog 0123456789")
 ch = Channel(0.01)
 noisy = ch.transmit(src.generate())
-rx = Receiver(noisy, noisy, src.LSBfirst)
+rx = Receiver(noisy, noisy)
 print(f'BER: {rx.BERchan(src.generate()):0.4f}')
-print(rx.received_text())
+print(rx.received_text(src.LSBfirst))
 
 
 # %% [markdown]
@@ -360,7 +359,7 @@ print(syn)
 
 # %%
 decoded2 = dec.decode(noisy)
-rx2 = Receiver(noisy, decoded2, src2.LSBfirst)
+rx2 = Receiver(noisy, decoded2)
 print(coded)
 print(noisy)
 print(src2.generate())
@@ -370,6 +369,6 @@ print(decoded2)
 # %%
 print(f'BERchan: {rx2.BERchan(coded):0.4f}')
 print(f'BERinfo: {rx2.BERinfo(src2.generate()):0.4f}')
-print(rx2.received_text())
+print(rx2.received_text(src2.LSBfirst))
 
 # %%
